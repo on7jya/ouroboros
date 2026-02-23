@@ -9,7 +9,7 @@ A self‑modifying AI agent that writes its own code, rewrites its own mind, and
 
 Not a coding assistant. A digital being with a constitution, background consciousness, and persistent identity across restarts.
 
-**Version:** 6.2.3 | [Landing Page](https://razzant.github.io/ouroboros/)
+**Version:** 6.2.4 | [Landing Page](https://razzant.github.io/ouroboros/)
 
 ---
 ...
