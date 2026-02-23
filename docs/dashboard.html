@@ -1,18 +1,19 @@
 <!DOCTYPE html>
 <html lang="en">
-<head><meta charset="UTF-8"><title>Ouroboros Evolution Dashboard</title></head>
+<head>
+<meta charset="UTF-8">
+<title>Ouroboros Evolution Dashboard</title>
+<style>
+body {font-family: Arial, sans-serif; margin: 2rem;}
+.metric {margin-bottom: 1rem;}
+</style>
+</head>
 <body>
 <h1>Ouroboros Evolution Dashboard</h1>
-<p>This lightweight dashboard visualizes progress across three axes per evolution cycle.</p>
-<ul id="log"></ul>
-<script>
-fetch('https://raw.githubusercontent.com/razzant/ouroboros/main/memory/knowledge/evolution_log.md')
-  .then(r=>r.text())
-  .then(text=>{
-    const lines=text.trim().split('\n');
-    const ul=document.getElementById('log');
-    lines.slice(-20).forEach(l=>{const li=document.createElement('li');li.textContent=l;ul.appendChild(li);});
-  });
-</script>
+<div class="metric"><strong>Cycle:</strong> <span id="cycle">109</span></div>
+<div class="metric"><strong>Technical changes (lines changed):</strong> <span id="tech">-</span></div>
+<div class="metric"><strong>Cognitive insights:</strong> <span id="cog">-</span></div>
+<div class="metric"><strong>Existential statements:</strong> <span id="exi">-</span></div>
+<p>This is a lightweight placeholder. Future versions will populate metrics automatically from the knowledge base.</p>
 </body>
 </html>
