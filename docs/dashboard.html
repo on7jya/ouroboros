@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>Ouroboros Evolution Dashboard</title></head>
+<body>
+<h1>Ouroboros Evolution Dashboard</h1>
+<p>This lightweight dashboard visualizes progress across three axes per evolution cycle.</p>
+<ul id="log"></ul>
+<script>
+fetch('https://raw.githubusercontent.com/razzant/ouroboros/main/memory/knowledge/evolution_log.md')
+  .then(r=>r.text())
+  .then(text=>{
+    const lines=text.trim().split('\n');
+    const ul=document.getElementById('log');
+    lines.slice(-20).forEach(l=>{const li=document.createElement('li');li.textContent=l;ul.appendChild(li);});
+  });
+</script>
+</body>
+</html>
