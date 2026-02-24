@@ -156,6 +156,36 @@ async def _safe_commit(consumer: AIOKafkaConsumer) -> None:
         metrics["last_error"] = str(e)
 
 
+async def translate_message(record) -> None:
+    """Translate and send a single record with exponential backoff.
+
+    This is the core transformation unit. It:
+      1. Sends the record to the destination topic
+      2. Retries on failure with exponential backoff
+      3. Raises after max_retries to signal batch should not be committed
+
+    If the function returns without raising, the record is considered delivered.
+    """
+    try:
+        # Send message (preserve key, headers, and raw bytes value)
+        await producer.send_and_wait(
+            topic=settings.dest_topic,
+            value=record.value,
+            key=record.key,
+            headers=record.headers,
+        )
+        metrics["messages_transferred"] += 1
+        if record.value:
+            metrics["bytes_transferred"] += len(record.value)
+    except Exception as e:
+        logger.warning(f"Send error: {e}")
+        metrics["errors"] += 1
+        metrics["last_error"] = str(e)
+        if not await _handle_send_error(e, {"topic": settings.dest_topic}):
+            # Max retries exceeded
+            raise
+
+
 async def _handle_send_error(error: Exception, record_data: dict) -> bool:
     """Handle send errors with exponential backoff.
 
@@ -290,7 +320,11 @@ async def on_shutdown() -> None:
 
 
 async def translate_loop() -> None:
-    """Main message consumption and translation loop."""
+    """Main message consumption and translation loop.
+
+    Strategy: consume in batches, try to deliver each record.
+    Only commit offsets if *all* records in the batch succeed.
+    """
     global running, metrics
 
     retry_count = 0
@@ -302,42 +336,24 @@ async def translate_loop() -> None:
                 max_records=settings.max_batch_size,
             )
 
-            total_processed = 0
             for tp, records in msgs.items():
                 if not records:
                     continue
 
-                batch_count = 0
+                # Try to deliver ALL records in this partition
+                batch_success = True
                 for record in records:
                     try:
-                        # Send message (preserve key, headers, and raw bytes value)
-                        await producer.send_and_wait(
-                            topic=settings.dest_topic,
-                            value=record.value,
-                            key=record.key,
-                            headers=record.headers,
-                        )
+                        await translate_message(record)
+                    except Exception as e:
+                        # One failure is enough to fail the whole batch
+                        logger.error(f"Batch failed: record could not be delivered after retries")
+                        batch_success = False
+                        break
 
-                        batch_count += 1
-                        metrics["messages_transferred"] += 1
-                        if record.value:
-                            metrics["bytes_transferred"] += len(record.value)
-
-                    except Exception as send_error:
-                        logger.warning(f"Send error: {send_error}")
-                        metrics["errors"] += 1
-                        metrics["last_error"] = str(send_error)
-                        if not await _handle_send_error(send_error, {"topic": settings.dest_topic}):
-                            # Max retries exceeded
-                            metrics["errors"] += 1
-                            metrics["last_error"] = f"Send failed after {settings.max_retries} retries"
-
-                # Commit offsets for this partition
-                if records:
+                # Only commit if the whole batch succeeded
+                if batch_success:
                     await _safe_commit(consumer)
-
-            if total_processed > 0:
-                logger.info(f"Transferred {batch_count} messages (total: {metrics['messages_transferred']})")
 
             retry_count = 0
 
