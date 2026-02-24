@@ -3,14 +3,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-# Import after mock setup to avoid real Kafka connections
 @pytest.fixture(autouse=True)
 def mock_kafka_dependencies():
     """Mock aiokafka components so tests don't need real Kafka."""
     mock_consumer = AsyncMock()
     mock_producer = AsyncMock()
     
-    with patch('services.kafka_translator.AIOKafkaConsumer', return_value=mock_consumer),          patch('services.kafka_translator.AIOKafkaProducer', return_value=mock_producer):
+    with patch('aiokafka.AIOKafkaConsumer', return_value=mock_consumer),          patch('aiokafka.AIOKafkaProducer', return_value=mock_producer):
         yield {'consumer': mock_consumer, 'producer': mock_producer}
 
 def test_metrics_endpoint_returns_initial_values():
