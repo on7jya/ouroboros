@@ -1,7 +1,8 @@
 import asyncio
 import os
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseSettings, Field
+from pydantic_settings import BaseSettings
+from pydantic import Field
 from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
 
 class Settings(BaseSettings):
