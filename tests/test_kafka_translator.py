@@ -4,9 +4,18 @@ import pytest
 from fastapi.testclient import TestClient
 
 # Import after mock setup to avoid real Kafka connections
-def test_metrics_endpoint_returns_initial_values(mock_kafka_dependencies):
+@pytest.fixture(autouse=True)
+def mock_kafka_dependencies():
+    """Mock aiokafka components so tests don't need real Kafka."""
+    mock_consumer = AsyncMock()
+    mock_producer = AsyncMock()
+    
+    with patch('services.kafka_translator.AIOKafkaConsumer', return_value=mock_consumer),          patch('services.kafka_translator.AIOKafkaProducer', return_value=mock_producer):
+        yield {'consumer': mock_consumer, 'producer': mock_producer}
+
+def test_metrics_endpoint_returns_initial_values():
     """Test that /metrics returns expected initial state."""
-    from services.kafka_translator import app, metrics
+    from services.kafka_translator.main import app, metrics
     client = TestClient(app)
     
     response = client.get("/metrics")
@@ -17,9 +26,9 @@ def test_metrics_endpoint_returns_initial_values(mock_kafka_dependencies):
     assert "last_error" in data
     assert "running" in data
 
-def test_status_endpoint_returns_config(mock_kafka_dependencies):
+def test_status_endpoint_returns_config():
     """Test that /status returns configuration and health."""
-    from services.kafka_translator import app, metrics
+    from services.kafka_translator.main import app, metrics
     client = TestClient(app)
     
     response = client.get("/status")
@@ -38,7 +47,7 @@ def test_version_is_correct():
 def test_settings_env_override():
     """Verify settings load from environment variables."""
     import os
-    from services.kafka_translator import Settings
+    from services.kafka_translator.main import Settings
     
     os.environ["SOURCE_BOOTSTRAP_SERVERS"] = "localhost:9092"
     os.environ["DEST_BOOTSTRAP_SERVERS"] = "localhost:9093"
@@ -53,20 +62,11 @@ def test_settings_env_override():
 
 def test_fastapi_routes_exist():
     """Verify all expected routes are registered."""
-    from services.kafka_translator import app
+    from services.kafka_translator.main import app
     
     paths = [route.path for route in app.routes]
     assert "/status" in paths
     assert "/metrics" in paths
-
-@pytest.fixture
-def mock_kafka_dependencies():
-    """Mock aiokafka components so tests don't need real Kafka."""
-    mock_consumer = AsyncMock()
-    mock_producer = AsyncMock()
-    
-    with patch('services.kafka_translator.AIOKafkaConsumer', return_value=mock_consumer),          patch('services.kafka_translator.AIOKafkaProducer', return_value=mock_producer):
-        yield {'consumer': mock_consumer, 'producer': mock_producer}
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
