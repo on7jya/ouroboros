@@ -3,14 +3,21 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
+
+# ============================================================================
+# Fix for producer/consumer mocking — patch before import
+# ============================================================================
+
 @pytest.fixture(autouse=True)
-def mock_kafka_dependencies():
-    """Mock aiokafka components so tests don't need real Kafka."""
-    mock_consumer = AsyncMock()
-    mock_producer = AsyncMock()
-    
-    with patch('aiokafka.AIOKafkaConsumer', return_value=mock_consumer),          patch('aiokafka.AIOKafkaProducer', return_value=mock_producer):
-        yield {'consumer': mock_consumer, 'producer': mock_producer}
+def mock_kafka_modules():
+    """Patch aiokafka imports at module level so main.py receives mocks."""
+    mock_consumer_cls = AsyncMock()
+    mock_producer_cls = AsyncMock()
+
+    # Patch aiokafka.AIOKafkaConsumer and AIOKafkaProducer
+    with patch('aiokafka.AIOKafkaConsumer', return_value=mock_consumer_cls),          patch('aiokafka.AIOKafkaProducer', return_value=mock_producer_cls):
+        yield {'consumer': mock_consumer_cls, 'producer': mock_producer_cls}
+
 
 def test_metrics_endpoint_returns_initial_values():
     """Test that /metrics returns expected initial state."""
@@ -25,6 +32,7 @@ def test_metrics_endpoint_returns_initial_values():
     assert "last_error" in data
     assert "running" in data
 
+
 def test_status_endpoint_returns_config():
     """Test that /status returns configuration and health."""
     from services.kafka_translator.main import app, metrics
@@ -38,10 +46,12 @@ def test_status_endpoint_returns_config():
     assert "source_topic" in data
     assert "dest_topic" in data
 
+
 def test_version_is_correct():
     """Verify version matches expected."""
     from services.kafka_translator import __version__
     assert __version__ == "6.3.1"
+
 
 def test_settings_env_override():
     """Verify settings load from environment variables."""
@@ -59,6 +69,7 @@ def test_settings_env_override():
     assert settings.source_topic == "input-topic"
     assert settings.dest_topic == "output-topic"
 
+
 def test_fastapi_routes_exist():
     """Verify all expected routes are registered."""
     from services.kafka_translator.main import app
@@ -67,6 +78,7 @@ def test_fastapi_routes_exist():
     assert "/status" in paths
     assert "/metrics" in paths
 
+
 # ============================================================================
 # Unit test for translate_message — real logic, not just endpoints
 # ============================================================================
@@ -74,20 +86,19 @@ def test_fastapi_routes_exist():
 @pytest.mark.asyncio
 async def test_translate_message_success():
     """Test that translate_message sends to destination and updates metrics."""
-    from services.kafka_translator.main import translate_message, producer, metrics
+    from services.kafka_translator.main import producer, metrics
     from unittest.mock import MagicMock
 
     # Reset metrics
     metrics["messages_transferred"] = 0
     metrics["errors"] = 0
 
-    # Mock producer.send_and_wait to succeed immediately
     mock_record = MagicMock()
     mock_record.value = b'test payload'
     mock_record.key = b'key1'
     mock_record.headers = []
 
-    # Mock producer to succeed
+    # Mock producer.send_and_wait to succeed
     producer.send_and_wait = AsyncMock()
 
     await translate_message(mock_record)
@@ -107,7 +118,7 @@ async def test_translate_message_success():
 @pytest.mark.asyncio
 async def test_translate_message_failure_and_retry():
     """Test that translate_message retries on failure."""
-    from services.kafka_translator.main import translate_message, producer, metrics
+    from services.kafka_translator.main import producer, metrics
     from unittest.mock import MagicMock
 
     # Reset metrics
@@ -120,18 +131,18 @@ async def test_translate_message_failure_and_retry():
     # First call fails, second succeeds
     mock_send = AsyncMock()
     mock_send.side_effect = [Exception("temp fail"), None]
+    producer.send_and_wait = mock_send
 
-    with patch('services.kafka_translator.main.producer.send_and_wait', mock_send):
-        await translate_message(mock_record)
+    await translate_message(mock_record)
 
     # Should have been called twice
-    assert mock_send.call_count == 2
+    assert producer.send_and_wait.call_count == 2
 
 
 @pytest.mark.asyncio
 async def test_translate_message_max_retries_exceeded():
     """Test that translate_message raises after max retries."""
-    from services.kafka_translator.main import translate_message, producer, metrics
+    from services.kafka_translator.main import producer, metrics
     from unittest.mock import MagicMock
 
     # Reset metrics
@@ -144,11 +155,10 @@ async def test_translate_message_max_retries_exceeded():
     # Always fail
     mock_send = AsyncMock()
     mock_send.side_effect = Exception("always fail")
+    producer.send_and_wait = mock_send
 
-    with patch('services.kafka_translator.main.producer.send_and_wait', mock_send):
-        # Should raise after max_retries (3)
-        with pytest.raises(Exception):
-            await translate_message(mock_record)
+    with pytest.raises(Exception):
+        await translate_message(mock_record)
 
     # 1 initial + 3 retries = 4 total attempts
-    assert mock_send.call_count == 4
+    assert producer.send_and_wait.call_count == 4
