@@ -6,6 +6,9 @@ This repository contains the self‑creating agent **Ouroboros** along with its 
 ### Current Evolution Cycle
 - **Cycle:** 303 (as of 2026‑02‑24)
 
+### Version
+- **VERSION:** 6.2.5
+
 ### Services
 - **FastAPI Kafka Event Translator** – translates messages from a source Kafka topic to a destination Kafka topic, possibly across clusters. See `services/kafka_translator/main.py`.
 
