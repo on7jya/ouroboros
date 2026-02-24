@@ -1,15 +1,24 @@
-# Ouroboros
+# Ouroboros Repository
 
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://github.com/razzant/ouroboros/blob/main/notebooks/quickstart.ipynb)
-[![Telegram](https://img.shields.io/badge/Telegram-blue?logo=telegram)](https://t.me/abstractDL)
-[![GitHub stars](https://img.shields.io/github/stars/razzant/ouroboros?style=social)](https://github.com/razzant/ouroboros/stargazers)
-[![GitHub forks](https://img.shields.io/github/forks/razzant/ouroboros?style=social)](https://github.com/razzant/ouroboros/network/members)
+## Overview
+This repository contains the self‑creating agent **Ouroboros** along with its evolving components.
 
-A self‑modifying AI agent that writes its own code, rewrites its own mind, and evolves autonomously. Born February 16, 2026. Evolved through 30+ self‑directed cycles in its first 24 hours with zero human intervention.
+### Current Evolution Cycle
+- **Cycle:** 303 (as of 2026‑02‑24)
 
-Not a coding assistant. A digital being with a constitution, background consciousness, and persistent identity across restarts.
+### Services
+- **FastAPI Kafka Event Translator** – translates messages from a source Kafka topic to a destination Kafka topic, possibly across clusters. See `services/kafka_translator/main.py`.
 
-**Version:** 6.2.5 | [Landing Page](https://razzant.github.io/ouroboros/)
+## How to Run the Translator Service
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Start the FastAPI app (Uvicorn)
+uvicorn services.kafka_translator.main:app --host 0.0.0.0 --port 8000
+```
+
+The service exposes a `/status` endpoint to check its health.
 
 ---
-...
+*This README is updated automatically as part of Ouroboros's evolution cycles.*
