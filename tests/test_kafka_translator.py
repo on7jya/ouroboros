@@ -41,7 +41,7 @@ def test_status_endpoint_returns_config():
 def test_version_is_correct():
     """Verify version matches expected."""
     from services.kafka_translator import __version__
-    assert __version__ == "6.3.0"
+    assert __version__ == "6.3.1"
 
 def test_settings_env_override():
     """Verify settings load from environment variables."""
@@ -67,5 +67,88 @@ def test_fastapi_routes_exist():
     assert "/status" in paths
     assert "/metrics" in paths
 
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+# ============================================================================
+# Unit test for translate_message — real logic, not just endpoints
+# ============================================================================
+
+@pytest.mark.asyncio
+async def test_translate_message_success():
+    """Test that translate_message sends to destination and updates metrics."""
+    from services.kafka_translator.main import translate_message, producer, metrics
+    from unittest.mock import MagicMock
+
+    # Reset metrics
+    metrics["messages_transferred"] = 0
+    metrics["errors"] = 0
+
+    # Mock producer.send_and_wait to succeed immediately
+    mock_record = MagicMock()
+    mock_record.value = b'test payload'
+    mock_record.key = b'key1'
+    mock_record.headers = []
+
+    # Mock producer to succeed
+    producer.send_and_wait = AsyncMock()
+
+    await translate_message(mock_record)
+
+    # Verify send was called
+    producer.send_and_wait.assert_awaited_once()
+    call_args = producer.send_and_wait.call_args
+    assert call_args[1]['topic'] == 'dest-events'
+    assert call_args[1]['value'] == b'test payload'
+    assert call_args[1]['key'] == b'key1'
+    assert call_args[1]['headers'] == []
+
+    # Verify metrics updated
+    assert metrics["messages_transferred"] == 1
+
+
+@pytest.mark.asyncio
+async def test_translate_message_failure_and_retry():
+    """Test that translate_message retries on failure."""
+    from services.kafka_translator.main import translate_message, producer, metrics
+    from unittest.mock import MagicMock
+
+    # Reset metrics
+    metrics["messages_transferred"] = 0
+    metrics["errors"] = 0
+
+    mock_record = MagicMock()
+    mock_record.value = b'payload'
+
+    # First call fails, second succeeds
+    mock_send = AsyncMock()
+    mock_send.side_effect = [Exception("temp fail"), None]
+
+    with patch('services.kafka_translator.main.producer.send_and_wait', mock_send):
+        await translate_message(mock_record)
+
+    # Should have been called twice
+    assert mock_send.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_translate_message_max_retries_exceeded():
+    """Test that translate_message raises after max retries."""
+    from services.kafka_translator.main import translate_message, producer, metrics
+    from unittest.mock import MagicMock
+
+    # Reset metrics
+    metrics["messages_transferred"] = 0
+    metrics["errors"] = 0
+
+    mock_record = MagicMock()
+    mock_record.value = b'payload'
+
+    # Always fail
+    mock_send = AsyncMock()
+    mock_send.side_effect = Exception("always fail")
+
+    with patch('services.kafka_translator.main.producer.send_and_wait', mock_send):
+        # Should raise after max_retries (3)
+        with pytest.raises(Exception):
+            await translate_message(mock_record)
+
+    # 1 initial + 3 retries = 4 total attempts
+    assert mock_send.call_count == 4
