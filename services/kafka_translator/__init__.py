@@ -1,2 +1,2 @@
 # expose module for imports
-from .main import *  # noqa: F403,F401
+from .main import __version__  # noqa: F401
