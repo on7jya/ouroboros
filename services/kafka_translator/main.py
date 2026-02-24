@@ -172,17 +172,8 @@ async def _safe_commit(consumer: AIOKafkaConsumer) -> None:
 
 
 async def translate_message(record) -> None:
-    """Translate and send a single record with exponential backoff.
-
-    This is the core transformation unit. It:
-      1. Sends the record to the destination topic
-      2. Retries on failure with exponential backoff
-      3. Raises after max_retries to signal batch should not be committed
-
-    If the function returns without raising, the record is considered delivered.
-    """
+    """Translate and send a single record with exponential backoff."""
     try:
-        # Send message (preserve key, headers, and raw bytes value)
         await producer.send_and_wait(
             topic=settings.dest_topic,
             value=record.value,
@@ -197,15 +188,11 @@ async def translate_message(record) -> None:
         metrics["errors"] += 1
         metrics["last_error"] = str(e)
         if not await _handle_send_error(e, {"topic": settings.dest_topic}):
-            # Max retries exceeded
             raise
 
 
 async def _handle_send_error(error: Exception, record_data: dict) -> bool:
-    """Handle send errors with exponential backoff.
-
-    Returns True if retry succeeded, False if max retries exceeded.
-    """
+    """Handle send errors with exponential backoff."""
     global running
     if not running:
         return False
@@ -287,7 +274,6 @@ async def stop_services() -> None:
     logger.info("Stopping Kafka services...")
     running = False
 
-    # Wait for any in-flight messages
     await asyncio.sleep(0.5)
 
     if producer:
@@ -322,17 +308,12 @@ async def stop_services() -> None:
 
 
 async def translate_loop() -> None:
-    """Main message consumption and translation loop.
-
-    Strategy: consume in batches, try to deliver each record.
-    Only commit offsets if *all* records in the batch succeed.
-    """
+    """Main message consumption and translation loop."""
     global running, metrics
 
     retry_count = 0
     while running:
         try:
-            # Poll for messages
             msgs = await consumer.getmany(
                 timeout_ms=settings.poll_timeout_ms,
                 max_records=settings.max_batch_size,
@@ -342,18 +323,15 @@ async def translate_loop() -> None:
                 if not records:
                     continue
 
-                # Try to deliver ALL records in this partition
                 batch_success = True
                 for record in records:
                     try:
                         await translate_message(record)
                     except Exception as e:
-                        # One failure is enough to fail the whole batch
                         logger.error(f"Batch failed: record could not be delivered after retries")
                         batch_success = False
                         break
 
-                # Only commit if the whole batch succeeded
                 if batch_success:
                     await _safe_commit(consumer)
 
@@ -378,6 +356,12 @@ async def translate_loop() -> None:
 # ============================================================================
 # API Endpoints
 # ============================================================================
+
+
+@app.get('/version', tags=['info'])
+async def version() -> str:
+    """Return only the version string for tooling."""
+    return __version__
 
 
 @app.get("/status", tags=["info"])
@@ -427,13 +411,12 @@ async def health() -> dict:
 
 # ============================================================================
 # CLI entrypoint
-# ============================================================================
+def main():
+    """CLI entry point: uvicorn --host 0.0.0.0 --port 8000 main:app."""
+    import uvicorn
+
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
 
 
 if __name__ == "__main__":
-    import uvicorn
-
-    logger.info(f"Starting Kafka Translator v{__version__}")
-    logger.info(f"Listening on 0.0.0.0:8000")
-
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    main()
