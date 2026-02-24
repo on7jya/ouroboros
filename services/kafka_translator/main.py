@@ -1,5 +1,6 @@
 """Kafka Event Translator Service — Reliable message relay between topics/clusters."""
 
+from contextlib import asynccontextmanager
 import asyncio
 import logging
 import time
@@ -16,7 +17,7 @@ except ImportError:
         "aiokafka is required. Install with: pip install aiokafka"
     )
 
-__version__ = "6.3.0"
+__version__ = "6.3.2"
 
 # Logging configuration
 logging.basicConfig(
@@ -91,12 +92,26 @@ metrics = {
     "bytes_transferred": 0,
 }
 
-app = FastAPI(
-    title="Kafka Event Translator",
-    description=f"Reliable Kafka-to-Kafka message translation v{__version__}",
-    version=__version__,
-)
 
+# ============================================================================
+# Lifespan (replacement for @app.on_event)
+# ============================================================================
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """FastAPI lifespan context manager — startup / shutdown."""
+    logger.info("Kafka Translator starting up")
+    try:
+        await start_services()
+        yield
+    finally:
+        logger.info("Kafka Translator shutting down")
+        await stop_services()
+
+
+# Create FastAPI app with lifespan
+app = FastAPI(lifespan=lifespan)
 
 # ============================================================================
 # Helpers
@@ -300,19 +315,6 @@ async def stop_services() -> None:
                 logger.error(f"Error stopping consumer: {e}")
 
     logger.info("All services stopped")
-
-
-@app.on_event("startup")
-async def on_startup() -> None:
-    """FastAPI startup hook."""
-    await start_services()
-
-
-@app.on_event("shutdown")
-async def on_shutdown() -> None:
-    """FastAPI shutdown hook."""
-    await stop_services()
-
 
 # ============================================================================
 # Core translation loop
