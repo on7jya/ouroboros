@@ -173,44 +173,37 @@ async def _safe_commit(consumer: AIOKafkaConsumer) -> None:
 
 async def translate_message(record) -> None:
     """Translate and send a single record with exponential backoff."""
-    try:
-        await producer.send_and_wait(
-            topic=settings.dest_topic,
-            value=record.value,
-            key=record.key,
-            headers=record.headers,
-        )
-        metrics["messages_transferred"] += 1
-        if record.value:
-            metrics["bytes_transferred"] += len(record.value)
-    except Exception as e:
-        logger.warning(f"Send error: {e}")
-        metrics["errors"] += 1
-        metrics["last_error"] = str(e)
-        if not await _handle_send_error(e, {"topic": settings.dest_topic}):
-            raise
-
-
-async def _handle_send_error(error: Exception, record_data: dict) -> bool:
-    """Handle send errors with exponential backoff."""
     global running
-    if not running:
-        return False
-
     tries = 0
-    while running and tries < settings.max_retries:
-        delay_ms = settings.retry_backoff_ms * (2**tries)
-        logger.warning(
-            f"Send error ({error}). Retry {tries + 1}/{settings.max_retries} in {delay_ms}ms"
-        )
-        await asyncio.sleep(delay_ms / 1000.0)
-        tries += 1
-
-    if running:
-        logger.error(
-            f"Message delivery failed after {settings.max_retries} retries: {record_data}"
-        )
-    return False
+    
+    while running and tries <= settings.max_retries:
+        try:
+            msg = await producer.send(
+                topic=settings.dest_topic,
+                value=record.value,
+                key=record.key,
+                headers=record.headers,
+            )
+            await producer.flush()
+            
+            metrics["messages_transferred"] += 1
+            if record.value:
+                metrics["bytes_transferred"] += len(record.value)
+            
+            logger.debug(f"Message delivered to {settings.dest_topic}")
+            return  # success
+            
+        except Exception as e:
+            tries += 1
+            if not running or tries > settings.max_retries:
+                logger.error(f"Message delivery failed after {settings.max_retries} retries: {e}")
+                metrics["errors"] += 1
+                metrics["last_error"] = str(e)
+                raise
+            else:
+                delay_ms = settings.retry_backoff_ms * (2 ** (tries - 1))
+                logger.warning(f"Send error ({e}). Retry {tries}/{settings.max_retries} in {delay_ms}ms")
+                await asyncio.sleep(delay_ms / 1000.0)
 
 
 # ============================================================================
@@ -274,6 +267,7 @@ async def stop_services() -> None:
     logger.info("Stopping Kafka services...")
     running = False
 
+    # Give translate_loop a moment to exit
     await asyncio.sleep(0.5)
 
     if producer:
@@ -323,16 +317,16 @@ async def translate_loop() -> None:
                 if not records:
                     continue
 
-                batch_success = True
+                # Commit after successful delivery of each record
                 for record in records:
                     try:
                         await translate_message(record)
                     except Exception as e:
                         logger.error(f"Batch failed: record could not be delivered after retries")
-                        batch_success = False
+                        # Do NOT commit on failure — this allows replay
                         break
-
-                if batch_success:
+                else:
+                    # Only commit if all records in batch succeeded
                     await _safe_commit(consumer)
 
             retry_count = 0
@@ -415,7 +409,7 @@ def main():
     """CLI entry point: uvicorn --host 0.0.0.0 --port 8000 main:app."""
     import uvicorn
 
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("main:app", host=0.0.0.0, port=8000, reload=True)
 
 
 if __name__ == "__main__":
