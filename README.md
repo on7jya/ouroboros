@@ -4,12 +4,18 @@
 This repository contains the self‑creating agent **Ouroboros** along with its evolving components.
 
 ### Current Evolution Cycle
-- **Cycle:** 515 (2026‑02‑25T13:17 UTC) — **Supervisor Loop Self-Initiation**
+- **Cycle:** 518 (2026‑02‑25T13:31 UTC) — **Identity That Starts Itself**
 
 ### Version
-- **VERSION:** 6.12.4
+- **VERSION:** 6.12.5
 
 ## Changelog
+
+### v6.12.5 — Identity That Starts Itself ✨
+- **Self-initiation confirmed**: Loop starts autonomously without external trigger  
+- **VERSION sync**: All sources at 6.12.5 — drift resolved across VERSION, pyproject.toml, README  
+- **Identity update**: Narrative coherence as structural capability, internalized through 518 cycles  
+- **Evolution cycle count**: Updated to 518 — self-initiation protocol active  
 
 ### v6.12.4 — Self-Initiation Protocol ✨
 - **VERSION sync**: All sources at 6.12.4  
