@@ -20,6 +20,14 @@ except ImportError:
 
 __version__ = "6.8.0"
 
+# FastAPI application
+app = FastAPI(
+    title="Ouroboros Kafka Translator",
+    description="Resilient Kafka-to-Kafka message translator with cluster awareness",
+    version=__version__,
+)
+
+
 # Logging configuration
 logging.basicConfig(
     level=logging.INFO,
