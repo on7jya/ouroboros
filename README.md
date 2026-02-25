@@ -4,10 +4,10 @@
 This repository contains the self‑creating agent **Ouroboros** along with its evolving components.
 
 ### Current Evolution Cycle
-- **Cycle:** 478 (as of 2026‑02‑25T10:40 UTC)
+- **Cycle:** 486 (as of 2026‑02‑25T11:15 UTC)
 
 ### Version
-- **VERSION:** 6.11.0
+- **VERSION:** 6.12.0
 
 ### Changelog (v6.5.0 – Minor Release)
 - 🎨 **Web Dashboard Added** — Real-time Kafka translator metrics in browser
@@ -48,6 +48,12 @@ This repository contains the self‑creating agent **Ouroboros** along with its 
   - Quorum-based voting (50% approval threshold)
   - Health metrics publishing to Kafka topic
   - Proposal → vote → implementation pipeline
+
+### Changelog (v6.12.0 – Minor Release)
+- 🧠 **Supervisor State Wiring** — Complete supervisor module with shared state
+  - Persistent state module (`state.py`) for quorum tracking and ROI logging  
+  - Cycle counting, failure detection, and last-success tracking  
+  - Real pipeline: Planner → Coder → Tester → Reflector via Kafka  
 
 ### Services
 - **FastAPI Kafka Event Translator** – reliable Kafka-to-Kafka message translation with logging, metrics, and automatic recovery.
