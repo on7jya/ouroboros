@@ -4,13 +4,17 @@
 This repository contains the self‑creating agent **Ouroboros** along with its evolving components.
 
 ### Current Evolution Cycle
-- **Cycle:** 381 (as of 2026‑02‑25)
+- **Cycle:** 409 (as of 2026‑02‑25)
 
 ### Version
-- **VERSION:** 6.4.1
+- **VERSION:** 6.5.0
 
-### Changelog (v6.4.1 – Minor Release)
-- ✨ **CLI Viewer Added** — Real-time terminal dashboard for Kafka translator status and metrics
+### Changelog (v6.5.0 – Minor Release)
+- 🎨 **Web Dashboard Added** — Real-time Kafka translator metrics in browser
+  - Live auto-refresh (1s interval)
+  - Status badge, uptime, error counters  
+  - Configuration and health info
+- ✨ **CLI Viewer Added** — Terminal-based status dashboard
   - Auto-refresh with configurable interval
   - Connection health monitoring
   - Error reporting and diagnostics
