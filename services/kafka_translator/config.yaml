@@ -1,0 +1,54 @@
+# Ouroboros Kafka Translator Configuration
+# Use this file to configure brokers, topics, auth, and more.
+
+version: "1.0"
+service:
+  name: "kafka-translator"
+  version: "6.3.2"
+
+brokers:
+  source:
+    host: "localhost"
+    port: 9092
+    # security_protocol: "PLAINTEXT"  # or "SASL_PLAINTEXT", "SSL", "SASL_SSL"
+    # sasl_mechanism: "PLAIN"        # or "SCRAM-SHA-256", "SCRAM-SHA-512"
+    # ssl_cafile: "/path/to/ca.pem"  # optional, for SSL
+    # sasl_username: "user"
+    # sasl_password: "pass"
+
+  destination:
+    host: "localhost"
+    port: 9092
+    # same security options as source
+
+topics:
+  source: "input-topic"
+  destination: "output-topic"
+
+# Authentication & Security
+auth:
+  enabled: false
+  # type: "basic"   # or "oauth2", "jwt"
+  # provider: ""    # external service name
+
+# Logging
+logging:
+  level: "INFO"
+  format: "json"   # or "text"
+
+# Monitoring
+monitoring:
+  metrics_enabled: true
+  metrics_path: "/metrics"
+  prometheus_endpoint: "0.0.0.0:9090"
+
+# Health & Recovery
+health:
+  readiness_probe_path: "/ready"
+  liveness_probe_path: "/live"
+  recovery_timeout_sec: 30
+
+# Developer settings (for local development)
+dev:
+  debug: false
+  hot_reload: true
