@@ -1,17 +1,13 @@
 """Middleware — authentication, logging, error handling."""
 
-from fastapi import Request, HTTPException
+from fastapi import Request, FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 import time
 import hashlib
 
 
-# Simple "basic auth" (for development/local use only)
-def create_basic_auth_middleware(username: str, password_hash: str):
-    """Create a FastAPI middleware for basic auth.
-
-    Password should be passed as SHA-256 hash (for safety).
-    """
+def setup_basic_auth(app: FastAPI, username: str, password_hash: str):
+    """Register basic auth middleware on app."""
 
     async def basic_auth_middleware(request: Request, call_next):
         # Skip auth for health checks and metrics
@@ -47,10 +43,9 @@ def create_basic_auth_middleware(username: str, password_hash: str):
 
         return await call_next(request)
 
-    return basic_auth_middleware
+    app.add_middleware(basic_auth_middleware)
 
 
-# Request timing middleware (for logging & debugging)
 async def request_timing_middleware(request: Request, call_next):
     start = time.time()
     response = await call_next(request)
@@ -66,3 +61,8 @@ async def request_timing_middleware(request: Request, call_next):
     }
     print(json.dumps(log_entry))
     return response
+
+
+def setup_timing_middleware(app: FastAPI):
+    """Register timing middleware on app."""
+    app.add_middleware(request_timing_middleware)
