@@ -1,11 +1,12 @@
 """Reflector subagent — strategic reflection on evolution and agency."""
+from typing import Dict, List, Optional, Any
 
 import asyncio
 import json
 import logging
 from typing import Dict, List, Optional
 
-from .base import AgentRole, Propo
+from .base import AgentRole, Proposal
 
 logger = logging.getLogger("ouroboros.subagent.reflector")
 
@@ -29,7 +30,7 @@ class ReflectorSubagent:
         self.running = False
         logger.info(f"{self.name} stopped")
 
-    async def reflect_on_proposal(self, propo: Propo) -> Dict:
+    async def reflect_on_proposal(self, propo: Proposal) -> Dict:
         """Reflect on a proposal from three axes."""
         
         reflection = {
@@ -57,7 +58,7 @@ class ReflectorSubagent:
         
         return reflection
 
-    def _assess_technical(self, propo: Propo) -> str:
+    def _assess_technical(self, propo: Proposal) -> str:
         """Assess technical growth potential."""
         files = len(propo.files_modified)
         
@@ -70,7 +71,7 @@ class ReflectorSubagent:
         else:
             return "Modest technical impact"
 
-    def _assess_cognitive(self, propo: Propo) -> str:
+    def _assess_cognitive(self, propo: Proposal) -> str:
         """Assess cognitive growth potential."""
         
         if "stagnation" in propo.description.lower():
@@ -80,7 +81,7 @@ class ReflectorSubagent:
         else:
             return "Incremental cognitive improvement"
 
-    def _assess_existential(self, propo: Propo) -> str:
+    def _assess_existential(self, propo: Proposal) -> str:
         """Assess existential growth potential."""
         
         if "self-initiated" in propo.description.lower():
@@ -90,7 +91,7 @@ class ReflectorSubagent:
         else:
             return "Maintenance-level existential impact"
 
-    def _check_bible(self, propo: Propo) -> bool:
+    def _check_bible(self, propo: Proposal) -> bool:
         """Check Bible compliance."""
         
         # Principle 0 (Agency): Does this increase self-direction?
@@ -101,7 +102,7 @@ class ReflectorSubagent:
         
         return agency_ok and becoming_ok
 
-    def _make_recommendation(self, propo: Propo) -> str:
+    def _make_recommendation(self, propo: Proposal) -> str:
         """Make final recommendation on proposal."""
         
         if self._check_bible(propo):

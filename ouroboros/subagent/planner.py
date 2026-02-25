@@ -1,4 +1,5 @@
 """Planner subagent — detect stagnation, propose evolution."""
+from typing import Dict, List, Optional, Any
 
 import asyncio
 import json
@@ -6,7 +7,7 @@ import logging
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from .base import AgentRole, Propo
+from .base import AgentRole, Proposal
 
 logger = logging.getLogger("ouroboros.subagent.planner")
 
@@ -22,7 +23,7 @@ class PlannerSubagent:
         self.running = False
         self.last_cycle: Optional[int] = None
         self.consecutive_stagnant_cycles = 0
-        self.proposal_queue: List[Propo] = []
+        self.proposal_queue: List[Proposal] = []
 
     async def start(self):
         """Start the planner subagent."""
@@ -34,7 +35,7 @@ class PlannerSubagent:
         self.running = False
         logger.info(f"{self.name} stopped")
 
-    async def analyze_cycle(self, cycle_data: Dict[str, Any]) -> Optional[Propo]:
+    async def analyze_cycle(self, cycle_data: Dict[str, Any]) -> Optional[Proposal]:
         """Analyze a cycle and propose evolution if stagnation detected."""
         current_cycle = cycle_data.get("evolution_cycle", 0)
         
@@ -50,7 +51,7 @@ class PlannerSubagent:
                 self.consecutive_stagnant_cycles += 1
                 
                 if self.consecutive_stagnant_cycles >= STAGNATION_THRESHOLD:
-                    proposal = Propo(
+                    proposal = Proposal(
                         id=f"planner-{current_cycle}",
                         type="evolution",
                         description=(
@@ -78,9 +79,9 @@ class PlannerSubagent:
         self.last_cycle = current_cycle
         return None
 
-    async def propose_auto_evolution(self) -> Propo:
-        """Propose auto-evolution without waiting for external trigger."""
-        return Propo(
+    async def propose_auto_evolution(self) -> Proposal:
+        """Proposalse auto-evolution without waiting for external trigger."""
+        return Proposal(
             id=f"auto-evolve-{self.consecutive_stagnant_cycles}",
             type="evolution",
             description=(

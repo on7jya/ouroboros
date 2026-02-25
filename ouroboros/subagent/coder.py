@@ -1,11 +1,12 @@
 """Coder subagent — implements evolution proposals with voting protocol."""
+from typing import Dict, List, Optional, Any
 
 import asyncio
 import json
 import logging
 from typing import Dict, List, Optional
 
-from .base import AgentRole, Propo
+from .base import AgentRole, Proposal
 
 logger = logging.getLogger("ouroboros.subagent.coder")
 
@@ -17,9 +18,9 @@ class CoderSubagent:
         self.role = AgentRole.CODER
         self.name = "ouroboros-coder"
         self.running = False
-        self.pending_proposals: Dict[str, Propo] = {}
+        self.pending_proposals: Dict[str, Proposal] = {}
         self.votes: Dict[str, List[Dict]] = {}  # proposal_id -> [votes]
-        self.impl_queue: List[Propo] = []
+        self.impl_queue: List[Proposal] = []
 
     async def start(self):
         """Start the coder subagent."""
@@ -31,7 +32,7 @@ class CoderSubagent:
         self.running = False
         logger.info(f"{self.name} stopped")
 
-    async def receive_proposal(self, propo: Propo) -> None:
+    async def receive_proposal(self, propo: Proposal) -> None:
         """Receive a proposal from Planner."""
         self.pending_proposals[propo.id] = propo
         self.votes[propo.id] = []
@@ -102,7 +103,7 @@ class CoderSubagent:
         self.impl_queue.clear()
         return results
 
-    async def _implement_proposal(self, propo: Propo) -> Dict:
+    async def _implement_proposal(self, propo: Proposal) -> Dict:
         """Implement a single proposal."""
         # This is where real implementation logic would go
         # For now, log what would be changed

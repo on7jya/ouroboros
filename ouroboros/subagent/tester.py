@@ -1,11 +1,12 @@
 """Tester subagent — validates proposals with coverage-focused testing."""
+from typing import Dict, List, Optional, Any
 
 import asyncio
 import json
 import logging
 from typing import Dict, List, Optional
 
-from .base import AgentRole, Propo
+from .base import AgentRole, Proposal
 
 logger = logging.getLogger("ouroboros.subagent.tester")
 
@@ -29,7 +30,7 @@ class TesterSubagent:
         self.running = False
         logger.info(f"{self.name} stopped")
 
-    async def validate_proposal(self, propo: Propo) -> Dict:
+    async def validate_proposal(self, propo: Proposal) -> Dict:
         """Validate a proposal and return test results."""
         # Simulated validation - real implementation would run actual tests
         
@@ -59,7 +60,7 @@ class TesterSubagent:
         
         return result
 
-    def _estimate_coverage(self, propo: Propo) -> float:
+    def _estimate_coverage(self, propo: Proposal) -> float:
         """Estimate test coverage for a proposal."""
         # Simple heuristic - more files = lower coverage per file
         base_coverage = 0.95
@@ -67,7 +68,7 @@ class TesterSubagent:
         
         return max(0.5, min(1.0, base_coverage - file_penalty))
 
-    def _assess_risk(self, propo: Propo, coverage: float) -> str:
+    def _assess_risk(self, propo: Proposal, coverage: float) -> str:
         """Assess risk level for a proposal."""
         if coverage >= 0.95:
             return "low"
