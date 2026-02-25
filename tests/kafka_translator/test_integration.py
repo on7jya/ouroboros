@@ -7,6 +7,7 @@ to test the full end-to-end translation pipeline.
 To run:
     pytest tests/kafka_translator/test_integration.py -v --capture=no
 """
+import os
 import time
 from kafka import KafkaProducer, KafkaConsumer
 from kafka.admin import KafkaAdminClient, NewTopic
@@ -18,14 +19,21 @@ pytestmark = pytest.mark.slow
 
 def test_end_to_end_translation():
     """Test full translation pipeline with real Kafka."""
-    # Setup test topics
-    producer = KafkaProducer(bootstrap_servers=['localhost:9092'])
-    consumer = KafkaConsumer(
-        'test_input',
-        bootstrap_servers=['localhost:9092'],
-        group_id='test_group',
-        auto_offset_reset='earliest'
-    )
+    # Get broker address from env, default to localhost:9092
+    kafka_server = os.environ.get("KAFKA_SERVER", "localhost:9092")
+    
+    try:
+        # Setup test topics
+        producer = KafkaProducer(bootstrap_servers=[kafka_server])
+        consumer = KafkaConsumer(
+            'test_input',
+            bootstrap_servers=[kafka_server],
+            group_id='test_group',
+            auto_offset_reset='earliest'
+        )
+    except Exception as e:
+        pytest.skip(f"Kafka broker not available at {kafka_server}: {e}")
+        return
 
     # Produce a test message
     producer.send('test_input', b'Hello, world!')

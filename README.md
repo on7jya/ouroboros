@@ -7,7 +7,7 @@ This repository contains the self‑creating agent **Ouroboros** along with its 
 - **Cycle:** 447 (as of 2026‑02‑25)
 
 ### Version
-- **VERSION:** 6.7.0
+- **VERSION:** 6.8.0
 
 ### Changelog (v6.5.0 – Minor Release)
 - 🎨 **Web Dashboard Added** — Real-time Kafka translator metrics in browser
@@ -25,7 +25,7 @@ This repository contains the self‑creating agent **Ouroboros** along with its 
   - Tests produce/consume messages and verify consumer groups
   - `kafka_mock.py` mock broker implementation with persistent offsets
 
-### Changelog (v6.7.0 – Minor Release)
+### Changelog (v6.8.0 – Minor Release)
 - 📚 **Production Deployment Documentation** — Complete deployment guide for all environments
   - Kubernetes, Docker Swarm, and bare-metal instructions  
   - Monitoring with web dashboard (v6.5) + CLI viewer (v6.6)
