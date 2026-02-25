@@ -60,15 +60,18 @@ def test_mock_broker_consumer_groups():
     assert len(group2_messages) == 1, f"Group 2 expected 1 message"
     assert group1_messages[0].value == group2_messages[0].value
     
-    # But offsets should be independent
+    # Produce second message
     broker.produce("shared_topic", "Second message")
     
+    # Only unread messages should be consumed
     group1_messages2 = broker.consume("group-1", "shared_topic")
     group2_messages2 = broker.consume("group-2", "shared_topic")
     
-    # Group 1 should see second message, group 2 already consumed it
-    assert len(group1_messages2) == 1
-    assert len(group2_messages2) == 0
+    # Each group should see the second message (independent offsets)
+    assert len(group1_messages2) == 1, "Group 1 should see second message"
+    assert len(group2_messages2) == 1, "Group 2 should see second message"
+    assert group1_messages2[0].value == "Second message"
+    assert group2_messages2[0].value == "Second message"
     
     print("✅ Consumer group isolation test passed!")
 
