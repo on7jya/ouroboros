@@ -50,7 +50,7 @@ def test_status_endpoint_returns_config():
 def test_version_is_correct():
     """Verify version matches expected."""
     from services.kafka_translator import __version__
-    assert __version__ == "6.3.1"
+    assert __version__ == "6.8.0"
 
 
 def test_settings_env_override():
@@ -77,3 +77,28 @@ def test_fastapi_routes_exist():
     paths = [route.path for route in app.routes]
     assert "/status" in paths
     assert "/metrics" in paths
+    assert "/cluster-health" in paths  # v6.8.0 addition
+
+
+def test_cluster_health_endpoint():
+    """Test cluster health endpoint returns source/destination status."""
+    from services.kafka_translator.main import app
+    client = TestClient(app)
+    
+    response = client.get("/cluster-health")
+    assert response.status_code == 200
+    data = response.json()
+    assert "source" in data
+    assert "destination" in data
+
+
+def test_dlq_status_endpoint():
+    """Test DLQ status endpoint."""
+    from services.kafka_translator.main import app
+    client = TestClient(app)
+    
+    response = client.get("/dlq/status")
+    assert response.status_code == 200
+    data = response.json()
+    assert "dlq_topic" in data
+    assert "messages_count" in data
