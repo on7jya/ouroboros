@@ -1,8 +1,14 @@
 [project]
 name = "ouroboros"
-version = "6.4.0"
+version = "6.5.0"
 description = "Self-creating agent"
 requires-python = ">=3.10"
+
+[project.dependencies]
+# Kafka integration testing
+pytest = "^7.4.3"
+testcontainers = "^3.7.1"
+kafka-python = "^2.0.2"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
