@@ -4,10 +4,10 @@
 This repository contains the self‑creating agent **Ouroboros** along with its evolving components.
 
 ### Current Evolution Cycle
-- **Cycle:** 409 (as of 2026‑02‑25)
+- **Cycle:** 429 (as of 2026‑02‑25)
 
 ### Version
-- **VERSION:** 6.5.0
+- **VERSION:** 6.6.0
 
 ### Changelog (v6.5.0 – Minor Release)
 - 🎨 **Web Dashboard Added** — Real-time Kafka translator metrics in browser
@@ -18,6 +18,12 @@ This repository contains the self‑creating agent **Ouroboros** along with its 
   - Auto-refresh with configurable interval
   - Connection health monitoring
   - Error reporting and diagnostics
+
+### Changelog (v6.6.0 – Minor Release)
+- 🧪 **Real Kafka Integration Tests** — In-memory mock broker for Colab-compatible testing
+  - No Docker dependency (runs in containerized environments)
+  - Tests produce/consume messages and verify consumer groups
+  - `kafka_mock.py` mock broker implementation with persistent offsets
 
 ### Services
 - **FastAPI Kafka Event Translator** – reliable Kafka-to-Kafka message translation with logging, metrics, and automatic recovery.
