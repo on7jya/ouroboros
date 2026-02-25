@@ -14,7 +14,7 @@ kafka-python = "^2.0.2"
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
-addopts = "-q --tb-short"
+addopts = "-q --tb=short"
 
 [tool.ruff]
 line-length = 120
