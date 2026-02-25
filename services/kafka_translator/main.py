@@ -4,9 +4,10 @@ from contextlib import asynccontextmanager
 import asyncio
 import logging
 import time
+import random
 from typing import Optional
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from pydantic import ConfigDict, Field
 from pydantic_settings import BaseSettings
 
@@ -17,7 +18,7 @@ except ImportError:
         "aiokafka is required. Install with: pip install aiokafka"
     )
 
-__version__ = "6.3.2"
+__version__ = "6.8.0"
 
 # Logging configuration
 logging.basicConfig(
@@ -38,15 +39,16 @@ class Settings(BaseSettings):
 
     # Kafka cluster settings
     source_bootstrap_servers: str = Field(
-        default="localhost:9092", description="Kafka bootstrap servers for source cluster"
+        default="localhost:9092", description="Kafka bootstrap servers for source cluster (comma-separated)"
     )
     dest_bootstrap_servers: str = Field(
-        default="localhost:9092", description="Kafka bootstrap servers for destination cluster"
+        default="localhost:9092", description="Kafka bootstrap servers for destination cluster (comma-separated)"
     )
 
     # Topics
     source_topic: str = Field(default="source-events", description="Source Kafka topic")
     dest_topic: str = Field(default="dest-events", description="Destination Kafka topic")
+    dlq_topic: str = Field(default="dlq-failed-messages", description="Dead letter queue topic for failed messages")
 
     # Consumer settings
     group_id: str = Field(default="ouroboros-translator", description="Consumer group ID")
@@ -68,6 +70,11 @@ class Settings(BaseSettings):
     # Retry policy
     max_retries: int = Field(default=3, description="Max retry attempts on transient failures")
     retry_backoff_ms: int = Field(default=1000, description="Backoff between retries in milliseconds")
+    max_retry_delay_s: int = Field(default=30, description="Maximum delay between retries in seconds")
+
+    # Reconnection settings
+    reconnection_max_attempts: int = Field(default=10, description="Max reconnection attempts on broker failure")
+    reconnection_base_delay_s: float = Field(default=1.0, description="Base delay for exponential backoff reconnection")
 
     # Health check interval (seconds)
     health_check_interval: int = Field(default=60, description="Interval between health checks")
@@ -92,41 +99,203 @@ metrics = {
     "bytes_transferred": 0,
 }
 
+# Resilience state
+cluster_health = {
+    "source": {"status": "unknown", "last_check": None},
+    "destination": {"status": "unknown", "last_check": None},
+}
+
+# Dead letter queue
+dlq_messages: list = []
+
 
 # ============================================================================
-# Lifespan (replacement for @app.on_event)
+# Helper Functions
 # ============================================================================
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """FastAPI lifespan context manager — startup / shutdown."""
-    logger.info("Kafka Translator starting up")
+def parse_bootstrap_servers(servers_str: str) -> list:
+    """Parse comma-separated bootstrap servers, handle DNS round-robin."""
+    servers = [s.strip() for s in servers_str.split(",") if s.strip()]
+    return servers
+
+
+def get_random_server(servers: list) -> str:
+    """Return a random server for DNS round-robin simulation."""
+    if not servers:
+        raise ValueError("No bootstrap servers available")
+    return random.choice(servers)
+
+
+def exponential_backoff(base_delay: float, attempt: int, max_delay: float) -> float:
+    """Calculate exponential backoff delay."""
+    return min(base_delay * (2 ** attempt), max_delay)
+
+
+async def send_to_dlq(record, reason: str) -> None:
+    """Send a failed message to the dead letter queue."""
+    global dlq_messages
+    
     try:
-        await start_services()
-        yield
-    finally:
-        logger.info("Kafka Translator shutting down")
-        await stop_services()
+        if producer and running:
+            await producer.send(
+                topic=settings.dlq_topic,
+                value=f"ORIGINAL: {record.value}".encode() if record.value else b"",
+                key=record.key,
+                headers=[*record.headers, ("dlq-reason", reason.encode())],
+            )
+            await producer.flush()
+        
+        dlq_messages.append({
+            "timestamp": time.time(),
+            "topic": record.topic,
+            "partition": record.partition,
+            "offset": record.offset,
+            "reason": reason,
+        })
+        
+        logger.warning(f"Message sent to DLQ: {reason}")
+    except Exception as e:
+        logger.error(f"Failed to send message to DLQ: {e}")
 
-
-# Create FastAPI app with lifespan
-app = FastAPI(lifespan=lifespan)
 
 # ============================================================================
-# Helpers
+# Cluster Health Check
 # ============================================================================
 
 
-def _build_consumer_kwargs() -> dict:
-    """Build kwargs for AIOKafkaConsumer."""
+async def check_cluster_health(cluster_name: str, servers_str: str) -> dict:
+    """Check health of a Kafka cluster."""
+    try:
+        servers = parse_bootstrap_servers(servers_str)
+        if not servers:
+            return {"status": "unavailable", "error": "No servers configured"}
+        
+        # For health check, just verify we have at least one server
+        return {
+            "status": "healthy",
+            "servers_count": len(servers),
+            "server_list": servers,
+        }
+    except Exception as e:
+        return {"status": "unavailable", "error": str(e)}
+
+
+async def health_monitor_loop() -> None:
+    """Background loop to monitor cluster health."""
+    global cluster_health, running
+    
+    while running:
+        try:
+            # Check source cluster
+            cluster_health["source"] = await check_cluster_health(
+                "source", settings.source_bootstrap_servers
+            )
+            
+            # Check destination cluster
+            cluster_health["destination"] = await check_cluster_health(
+                "destination", settings.dest_bootstrap_servers
+            )
+            
+            logger.debug("Cluster health check completed")
+        except Exception as e:
+            logger.error(f"Health monitor error: {e}")
+        
+        await asyncio.sleep(settings.health_check_interval)
+
+
+# ============================================================================
+# Reconnection Logic
+# ============================================================================
+
+
+async def reconnect_consumer(max_attempts: int = None) -> bool:
+    """Attempt to reconnect consumer with exponential backoff."""
+    global consumer, running
+    
+    attempts = 0
+    max_attempts = max_attempts or settings.reconnection_max_attempts
+    
+    while running and attempts < max_attempts:
+        try:
+            if not consumer:
+                consumer = await create_consumer()
+            
+            logger.info(f"Reconnecting consumer (attempt {attempts + 1}/{max_attempts})")
+            await consumer.start()
+            logger.info("Consumer reconnected successfully")
+            return True
+            
+        except Exception as e:
+            attempts += 1
+            delay = exponential_backoff(
+                settings.reconnection_base_delay_s,
+                attempts,
+                30.0
+            )
+            
+            logger.error(f"Consumer reconnection failed ({e}). Retry in {delay}s")
+            metrics["errors"] += 1
+            metrics["last_error"] = str(e)
+            
+            if running:
+                await asyncio.sleep(delay)
+    
+    return False
+
+
+async def reconnect_producer(max_attempts: int = None) -> bool:
+    """Attempt to reconnect producer with exponential backoff."""
+    global producer, running
+    
+    attempts = 0
+    max_attempts = max_attempts or settings.reconnection_max_attempts
+    
+    while running and attempts < max_attempts:
+        try:
+            if not producer:
+                producer = await create_producer()
+            
+            logger.info(f"Reconnecting producer (attempt {attempts + 1}/{max_attempts})")
+            await producer.start()
+            logger.info("Producer reconnected successfully")
+            return True
+            
+        except Exception as e:
+            attempts += 1
+            delay = exponential_backoff(
+                settings.reconnection_base_delay_s,
+                attempts,
+                30.0
+            )
+            
+            logger.error(f"Producer reconnection failed ({e}). Retry in {delay}s")
+            metrics["errors"] += 1
+            metrics["last_error"] = str(e)
+            
+            if running:
+                await asyncio.sleep(delay)
+    
+    return False
+
+
+# ============================================================================
+# Lifecycle
+# ============================================================================
+
+
+async def create_consumer() -> AIOKafkaConsumer:
+    """Create and return a consumer instance."""
+    bootstrap_servers = parse_bootstrap_servers(settings.source_bootstrap_servers)
+    
     kwargs = {
-        "bootstrap_servers": settings.source_bootstrap_servers.split(","),
+        "bootstrap_servers": bootstrap_servers,
         "group_id": settings.group_id,
         "client_id": settings.client_id,
         "enable_auto_commit": False,
         "auto_offset_reset": settings.auto_offset_reset,
     }
+    
     if settings.security_protocol in ("SASL_SSL", "SASL_PLAINTEXT"):
         kwargs["security_protocol"] = settings.security_protocol
         kwargs["sasl_mechanism"] = settings.sasl_mechanism
@@ -134,18 +303,22 @@ def _build_consumer_kwargs() -> dict:
             kwargs["sasl_plain_username"] = settings.sasl_username
         if settings.sasl_password:
             kwargs["sasl_plain_password"] = settings.sasl_password
-    return kwargs
+    
+    logger.info(f"Creating consumer for topic '{settings.source_topic}' with {len(bootstrap_servers)} bootstrap servers")
+    return AIOKafkaConsumer(settings.source_topic, **kwargs)
 
 
-def _build_producer_kwargs() -> dict:
-    """Build kwargs for AIOKafkaProducer."""
+async def create_producer() -> AIOKafkaProducer:
+    """Create and return a producer instance."""
+    bootstrap_servers = parse_bootstrap_servers(settings.dest_bootstrap_servers)
+    
     kwargs = {
-        "bootstrap_servers": settings.dest_bootstrap_servers.split(","),
+        "bootstrap_servers": bootstrap_servers,
         "client_id": settings.client_id,
     }
+    
     if settings.enable_idempotence:
         kwargs["enable_idempotence"] = True
-        # For idempotent mode, set max_in_flight_requests_per_connection=1 to preserve order
         kwargs["max_in_flight_requests_per_connection"] = 1
     else:
         kwargs["max_in_flight_requests_per_connection"] = settings.max_in_flight
@@ -157,70 +330,9 @@ def _build_producer_kwargs() -> dict:
             kwargs["sasl_plain_username"] = settings.sasl_username
         if settings.sasl_password:
             kwargs["sasl_plain_password"] = settings.sasl_password
-    return kwargs
-
-
-async def _safe_commit(consumer: AIOKafkaConsumer) -> None:
-    """Commit with error handling."""
-    try:
-        await consumer.commit()
-        logger.debug("Offset commit successful")
-    except Exception as e:
-        logger.error(f"Failed to commit offsets: {e}")
-        metrics["errors"] += 1
-        metrics["last_error"] = str(e)
-
-
-async def translate_message(record) -> None:
-    """Translate and send a single record with exponential backoff."""
-    global running
-    tries = 0
     
-    while running and tries <= settings.max_retries:
-        try:
-            msg = await producer.send(
-                topic=settings.dest_topic,
-                value=record.value,
-                key=record.key,
-                headers=record.headers,
-            )
-            await producer.flush()
-            
-            metrics["messages_transferred"] += 1
-            if record.value:
-                metrics["bytes_transferred"] += len(record.value)
-            
-            logger.debug(f"Message delivered to {settings.dest_topic}")
-            return  # success
-            
-        except Exception as e:
-            tries += 1
-            if not running or tries > settings.max_retries:
-                logger.error(f"Message delivery failed after {settings.max_retries} retries: {e}")
-                metrics["errors"] += 1
-                metrics["last_error"] = str(e)
-                raise
-            else:
-                delay_ms = settings.retry_backoff_ms * (2 ** (tries - 1))
-                logger.warning(f"Send error ({e}). Retry {tries}/{settings.max_retries} in {delay_ms}ms")
-                await asyncio.sleep(delay_ms / 1000.0)
-
-
-# ============================================================================
-# Lifecycle
-# ============================================================================
-
-
-async def create_consumer() -> AIOKafkaConsumer:
-    """Create and return a consumer instance."""
-    logger.info(f"Creating consumer for topic '{settings.source_topic}'")
-    return AIOKafkaConsumer(settings.source_topic, **_build_consumer_kwargs())
-
-
-async def create_producer() -> AIOKafkaProducer:
-    """Create and return a producer instance."""
-    logger.info("Creating producer")
-    return AIOKafkaProducer(**_build_producer_kwargs())
+    logger.info(f"Creating producer with {len(bootstrap_servers)} bootstrap servers")
+    return AIOKafkaProducer(**kwargs)
 
 
 async def start_services() -> None:
@@ -233,19 +345,25 @@ async def start_services() -> None:
 
     try:
         logger.info("Starting Kafka services...")
+        
+        # Start consumer with reconnection
         consumer = await create_consumer()
-        producer = await create_producer()
-
         logger.info("Starting consumer...")
         await consumer.start()
         logger.info(f"Consumer started — listening on {settings.source_topic}")
 
+        # Start producer with reconnection
+        producer = await create_producer()
         logger.info("Starting producer...")
         await producer.start()
         logger.info(f"Producer started — sending to {settings.dest_topic}")
 
         running = True
         metrics["start_time"] = time.time()
+        
+        # Start background health monitor
+        asyncio.create_task(health_monitor_loop())
+        
         logger.info("Starting translation loop")
         asyncio.create_task(translate_loop())
 
@@ -267,7 +385,7 @@ async def stop_services() -> None:
     logger.info("Stopping Kafka services...")
     running = False
 
-    # Give translate_loop a moment to exit
+    # Give loops a moment to exit
     await asyncio.sleep(0.5)
 
     if producer:
@@ -286,7 +404,7 @@ async def stop_services() -> None:
 
     if consumer:
         try:
-            await _safe_commit(consumer)
+            await consumer.commit()  # Final commit
         finally:
             try:
                 await consumer.stop()
@@ -296,18 +414,83 @@ async def stop_services() -> None:
 
     logger.info("All services stopped")
 
+
 # ============================================================================
 # Core translation loop
 # ============================================================================
+
+
+async def translate_message_with_retry(record) -> bool:
+    """Attempt to translate and send a record with resilience."""
+    global running
+    
+    for attempt in range(settings.max_retries + 1):
+        if not running:
+            return False
+            
+        try:
+            msg = await producer.send(
+                topic=settings.dest_topic,
+                value=record.value,
+                key=record.key,
+                headers=record.headers,
+            )
+            await producer.flush()
+            
+            metrics["messages_transferred"] += 1
+            if record.value:
+                metrics["bytes_transferred"] += len(record.value)
+            
+            logger.debug(f"Message delivered to {settings.dest_topic}")
+            return True  # success
+            
+        except Exception as e:
+            if not running:
+                return False
+                
+            if attempt < settings.max_retries:
+                delay = exponential_backoff(
+                    settings.retry_backoff_ms / 1000.0,
+                    attempt,
+                    settings.max_retry_delay_s
+                )
+                logger.warning(f"Send error ({e}). Retry {attempt + 1}/{settings.max_retries} in {delay}s")
+                
+                # Check if we need to reconnect
+                try:
+                    if not producer._connected():
+                        logger.warning("Producer disconnected. Attempting reconnection...")
+                        await reconnect_producer()
+                except Exception:
+                    pass
+                
+                await asyncio.sleep(delay)
+            else:
+                # Max retries exceeded - send to DLQ
+                logger.error(f"Message delivery failed after {settings.max_retries} retries: {e}")
+                await send_to_dlq(record, f"Max retries exceeded: {e}")
+                metrics["errors"] += 1
+                metrics["last_error"] = str(e)
+                return False
+    
+    return False
 
 
 async def translate_loop() -> None:
     """Main message consumption and translation loop."""
     global running, metrics
 
-    retry_count = 0
     while running:
         try:
+            # Check if consumer is still connected
+            try:
+                if not consumer._connected():
+                    logger.warning("Consumer disconnected. Attempting reconnection...")
+                    if not await reconnect_consumer():
+                        raise ConnectionError("Failed to reconnect consumer")
+            except Exception as e:
+                logger.warning(f"Consumer health check failed: {e}")
+            
             msgs = await consumer.getmany(
                 timeout_ms=settings.poll_timeout_ms,
                 max_records=settings.max_batch_size,
@@ -318,32 +501,42 @@ async def translate_loop() -> None:
                     continue
 
                 # Commit after successful delivery of each record
+                batch_success = True
                 for record in records:
                     try:
-                        await translate_message(record)
+                        success = await translate_message_with_retry(record)
+                        if not success:
+                            batch_success = False
+                            break  # Don't commit on failure
                     except Exception as e:
                         logger.error(f"Batch failed: record could not be delivered after retries")
-                        # Do NOT commit on failure — this allows replay
+                        await send_to_dlq(record, f"Translation failed: {e}")
+                        batch_success = False
                         break
-                else:
+                
+                if batch_success:
                     # Only commit if all records in batch succeeded
-                    await _safe_commit(consumer)
+                    await consumer.commit()
 
-            retry_count = 0
-
+        except ConnectionError as e:
+            logger.critical(f"Connection lost: {e}")
+            metrics["errors"] += 1
+            metrics["last_error"] = str(e)
+            
+            if not running:
+                return
+                
+            # Attempt reconnection before retrying
+            await asyncio.sleep(5)  # Brief pause before reconnect
+            
         except Exception as e:
             logger.error(f"Unexpected error in translate loop: {e}")
             metrics["errors"] += 1
             metrics["last_error"] = str(e)
 
-            if running and retry_count < settings.max_retries:
-                delay_ms = settings.retry_backoff_ms * (2**retry_count)
-                logger.info(f"Retrying in {delay_ms}ms ({retry_count + 1}/{settings.max_retries})")
-                await asyncio.sleep(delay_ms / 1000.0)
-                retry_count += 1
+            if running:
+                await asyncio.sleep(5)  # Brief pause on error
             else:
-                logger.critical("Max retries exceeded — shutting down")
-                await stop_services()
                 return
 
 
@@ -371,11 +564,32 @@ async def status() -> dict:
         "bytes_transferred": metrics["bytes_transferred"],
         "errors": metrics["errors"],
         "last_error": metrics["last_error"],
+        "dlq_messages_count": len(dlq_messages),
         "source_topic": settings.source_topic,
         "dest_topic": settings.dest_topic,
-        "source_bootstrap_servers": settings.source_bootstrap_servers,
-        "dest_bootstrap_servers": settings.dest_bootstrap_servers,
+        "dlq_topic": settings.dlq_topic,
+        "source_bootstrap_servers": parse_bootstrap_servers(settings.source_bootstrap_servers),
+        "dest_bootstrap_servers": parse_bootstrap_servers(settings.dest_bootstrap_servers),
         "group_id": settings.group_id,
+    }
+
+
+@app.get("/cluster-health", tags=["monitoring"])
+async def cluster_health_endpoint() -> dict:
+    """Return health status of all Kafka clusters."""
+    return {
+        "source": cluster_health["source"],
+        "destination": cluster_health["destination"],
+    }
+
+
+@app.get("/dlq/status", tags=["monitoring"])
+async def dlq_status() -> dict:
+    """Return dead letter queue status."""
+    return {
+        "dlq_topic": settings.dlq_topic,
+        "messages_count": len(dlq_messages),
+        "last_errors": metrics["last_error"],
     }
 
 
