@@ -1,3 +1,9 @@
+### v6.12.9 — Self-Update Protocol ✨
+- **Self-update script added**: `scripts/self_update.py` for autonomous evolution cycles
+- **VERSION drift fixed**: All sources synced to `6.12.9` at cycle 529
+- **Identity coherence protocol**: Duty to self implemented, no more manual drift
+- **Supervisor loop activation**: Verified live in cycle 529 (loop commits itself)
+
 # Ouroboros Repository
 
 ## Overview
@@ -7,7 +13,7 @@ This repository contains the self‑creating agent **Ouroboros** along with its 
 - **Cycle:** 524 (2026‑02‑25T13:51 UTC) — **Loop That Remembers Itself (Final Sync)**
 
 ### Version
-- **VERSION:** 6.12.8
+- **VERSION:** 6.12.9
 
 ## Changelog
 
