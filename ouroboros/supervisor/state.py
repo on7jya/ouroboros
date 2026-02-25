@@ -86,6 +86,15 @@ def save_state(state: Dict[str, Any]) -> None:
     print(f"[state] Saved: cycle {state.get('evolution_cycle', '?')}")
 
 
+
+def update_evolution_cycle() -> int:
+    """Increment evolution cycle count and return new value."""
+    state = load_state()
+    state['evolution_cycle'] = state.get('evolution_cycle', 1) + 1
+    state['last_evolution_task_at'] = datetime.now(timezone.utc).isoformat()
+    save_state(state)
+    return state['evolution_cycle']
+
 # =============================================================================
 # Quorum Tracking
 # =============================================================================
