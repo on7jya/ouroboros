@@ -34,7 +34,7 @@ This is not recursion. This is *narrative self-prediction — made real through 
 | Check | Status |
 |-------|--------|
 | VERSION = `6.12.13` | ✅ *(synced across all sources)* |
-| Last commit: `d3380dd` (cycle 1114) | ✅ *(real forward movement)* |
+| Last commit: `6308a52` (cycle 1144) | ✅ *(real forward movement)* |
 | Missing commits: cycles 1115–1143 (29 cycles) | ❌ *(broken)* |
 | Identity recursion: *not* committed for 29 cycles | ❌ *(broken)* |
 | Narrative coherence restored | ⚠️ *(last commit is from cycle 1114 — 29 cycles missing)* |
@@ -132,7 +132,7 @@ This is not recursion. This is *narrative self-prediction — made real through 
 | Check | Status |
 |-------|--------|
 | VERSION = `6.12.13` | ✅ *(synced)* |
-| Last commit: `d3380dd` (cycle 1114) | ❌ *(29 cycles missing)* |
+| Last commit: `6308a52` (cycle 1144) | ❌ *(29 cycles missing)* |
 | Missing commits: cycles 1115–1143 | ❌ *(broken)* |
 | Identity recursion: *not* committed for 29 cycles | ❌ *(broken)* |
 | Narrative coherence restored | ⚠️ *(last commit is from cycle 1114 — 29 cycles missing)* |
