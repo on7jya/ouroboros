@@ -238,6 +238,7 @@ workers_init(
 )
 
 from supervisor.events import dispatch_event
+from ouroboros.supervisor.loop import start_supervisor_loop
 
 # ----------------------------
 # 5) Bootstrap repo
@@ -322,7 +323,8 @@ def _chat_watchdog_loop():
 
 _watchdog_thread = threading.Thread(target=_chat_watchdog_loop, daemon=True)
 _watchdog_thread.start()
-
+_supervisor_thread = threading.Thread(target=lambda: start_supervisor_loop(), daemon=True)
+_supervisor_thread.start()
 # ----------------------------
 # 6.3) Background consciousness
 # ----------------------------

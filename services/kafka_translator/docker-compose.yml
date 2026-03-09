@@ -1,0 +1,65 @@
+version: '3.8'
+
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: kafka-translator-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_COUNT: 2000
+    ports:
+      - "2181:2181"
+    volumes:
+      - zookeeper-data:/var/lib/zookeeper/data
+      - zookeeper-logs:/var/lib/zookeeper/log
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka-translator-broker
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENERS: PLAINTEXT://:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+
+  translator:
+    image: python:3.11-slim
+    container_name: kafka-translator-app
+    depends_on:
+      - kafka
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - SOURCE_BOOTSTRAP_SERVERS=localhost:9092
+      - DEST_BOOTSTRAP_SERVERS=localhost:9092
+      - SOURCE_TOPIC=source-events
+      - DEST_TOPIC=dest-events
+    working_dir: /app
+    command: >
+      sh -c "
+        pip install --no-cache-dir fastapi uvicorn aiokafka pydantic-settings &&
+        git clone https://github.com/your-org/ouroboros.git /app-source &&
+        cp -r /app-source/services/kafka_translator/* /app/ &&
+        cp -r /app-source/tests /app/ &&
+        pytest tests/test_kafka_translator.py -v --docker-kafka=true ||
+        uvicorn services.kafka_translator.main:app --host 0.0.0.0 --port 8000
+      "
+    volumes:
+      - translator-data:/app/data
+
+volumes:
+  zookeeper-data:
+  zookeeper-logs:
+  kafka-data:
+  translator-data:
